@@ -2,7 +2,7 @@
 title: "Flight Delay Prediction Analysis"
 author: "Team Members: Gabriela, Sami, Ayush, Ross"
 date: "April 24, 2025"
-format: html
+format: docx
 editor: 
   markdown: 
     wrap: 72
@@ -304,6 +304,37 @@ tree_model <- tree(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN 
 # Print the model summary
 summary(tree_model)
 
+# Set up storage for error rates
+set.seed(42)
+tree_error_rate <- numeric(10)
+
+for (i in 1:10) {
+  # Random 80/20 split
+  sample <- sample.int(n = nrow(flight_clean), size = round(0.80 * nrow(flight_clean)), replace = FALSE)
+  train <- flight_clean[sample, ]
+  test <- flight_clean[-sample, ]
+  
+  # Train decision tree
+  tree_model_iter <- tree(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                            DEST + DEP_TIME_BLK + DISTANCE,
+                          data = train,
+                          control = tree.control(nobs = nrow(train), mindev = 0.001))
+  
+  # Predict
+  tree_pred_iter <- predict(tree_model_iter, newdata = test, type = "class")
+  
+  # Compute confusion matrix and error rate
+  cm <- table(test$DEP_DEL15, tree_pred_iter)
+  error <- sum(cm[row(cm) != col(cm)]) / sum(cm)
+  tree_error_rate[i] <- error
+}
+
+# Mean test error across 10 iterations
+mean(tree_error_rate)
+
+
+In this section, we trained a decision tree model using a balanced dataset generated with the ROSE package to address class imbalance. We defined a formula using variables available prior to departure and set a low mindev threshold to allow deeper tree growth since our original tree only had terminal nodes that led to 0s (indicating no delays only). To evaluate model stability and generalization, we repeated the process ten times using random 80/20 train-test splits. For each iteration, we calculated the test error and finally reported the mean error rate across all runs to assess overall model performance.
+
 {r}
 # Make predictions on the test set
 tree_pred <- predict(tree_model, newdata = test_data, type = "class")
@@ -321,6 +352,7 @@ cat("Decision Tree Performance (tree package):\n")
 cat("Accuracy:", tree_accuracy, "\n")
 cat("Sensitivity:", tree_sensitivity, "\n")
 cat("Specificity:", tree_specificity, "\n")
+
 
 Tree structure
 
@@ -379,9 +411,6 @@ This implies that the tree did not overfit severely and already maintained a bal
 The pruned tree retained the most informative splits while eliminating branches that contributed little to prediction accuracy. This resulted in a more generalizable model that performs better on unseen data.
 
 {r}
-
-
-{r}
 # Visualize the decision tree
 plot(tree_model, type = "uniform")  
 text(tree_model, pretty = 0, cex = 0.5) 
@@ -435,6 +464,41 @@ rf_model <- randomForest(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER +
 # Print model summary
 print(rf_model)
 
+# === Random Forest 10-Iteration Evaluation ===
+
+library(randomForest)
+
+set.seed(42)
+rf.error.rate <- numeric(10)
+
+for (i in 1:10) {
+  # Random 80/20 train-test split
+  sample <- sample.int(n = nrow(flight_clean), size = round(0.80 * nrow(flight_clean)), replace = FALSE)
+  train <- flight_clean[sample, ]
+  test <- flight_clean[-sample, ]
+  
+  # Balance the training set using ROSE
+  train_bal <- ROSE(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN +
+                      DEST + DEP_TIME_BLK + DISTANCE, data = train, seed = 42)$data
+  
+  # Train Random Forest
+  rf_model_iter <- randomForest(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN +
+                                  DEST + DEP_TIME_BLK + DISTANCE,
+                                data = train_bal, ntree = 100)
+  
+  # Predict
+  rf_pred <- predict(rf_model_iter, newdata = test)
+  
+  # Confusion matrix and error rate
+  cm <- table(test$DEP_DEL15, rf_pred)
+  error <- sum(cm[row(cm) != col(cm)]) / sum(cm)
+  rf.error.rate[i] <- error
+}
+
+# Mean test error across 10 iterations
+mean(rf.error.rate)
+
+
 Random Forest Summary: - Number of Trees: 100 - Out-of-Bag Error Rate: 23.6%
 
 Confusion Matrix (Training - OOB): - Class 0 (not delayed): 158,809 correctly classified, 54,153 misclassified - Class 1 (delayed): 166,434 correctly classified, 46,328 misclassified
@@ -485,9 +549,9 @@ The variable importance plot highlights the most influential factors in predicti
 
 Enhancing our Model
 
-To enhance our model’s ability to detect patterns in flight delays, we engineered several domain-informed features using only data available prior to departure. Specifically, we extracted the departure hour from the scheduled departure time (DEP_HOUR), created a weekend indicator (IS_WEEKEND), and combined origin and destination airports into a ROUTE variable to capture route-specific delay trends. To simplify modeling and reduce overfitting, we grouped infrequent categories for OP_CARRIER, ORIGIN, DEST, and ROUTE under the label “OTHER,” retaining only the top 10 (or 50 for routes) most frequent levels.
+While our initial Random Forest model showed promising results compared to logistic regression and decision trees, there were several important limitations we aimed to address through enhancements. The original model struggled with the class imbalance present in our dataset, where only about 17% of flights were delayed. Even after applying resampling techniques like ROSE, the model still favored the majority class, resulting in poor performance when identifying actual delays. To improve its sensitivity to delayed flights, we adjusted the classification threshold to better capture the minority class. Additionally, the original model used only a basic set of variables, missing important patterns such as time-of-day trends, weekend effects, and route-specific behaviors. To give the model more predictive power, we engineered new features including the hour of departure, a weekend indicator, and a combined route variable from origin and destination.
 
-Additionally, because our dataset is imbalanced—with delays comprising only about 17% of all flights—we applied a threshold adjustment when making predictions with the Random Forest model. Rather than using the default 0.5 cutoff, we lowered it to 0.4 to improve the model’s ability to identify delayed flights. This approach is common in imbalanced classification settings and helped improve the model’s sensitivity to the minority class (delays), resulting in a better balance between specificity and recall.
+We also fine-tuned key hyperparameters such as the number of trees, the number of features considered at each split, and the minimum number of samples in a terminal node. These adjustments helped reduce overfitting and improved the model’s generalization to unseen test data. To enhance interpretability, we enabled feature importance scoring, which allowed us to identify that variables like departure time block, route, and distance had the greatest impact on predicting delays. By combining better feature engineering, smarter sampling strategies, and thoughtful threshold adjustment, the enhanced Random Forest model achieved significantly better balance between precision and recall. This made the model not only more accurate but also more practical and reliable for real-world use cases like travel planning and airline operations.
 
 
 
@@ -555,5 +619,13 @@ cat("Sensitivity:", rf_conf_matrix$byClass["Sensitivity"], "\n")
 cat("Specificity:", rf_conf_matrix$byClass["Specificity"], "\n")
 cat("NPV:", rf_conf_matrix$byClass["Neg Pred Value"], "\n")
 
+varImpPlot(rf_model, main = "Variable Importance - Enhanced Random Forest")
 
+High Overall Accuracy: The model achieved an accuracy of 81.64%, meaning it correctly predicted delay status for over 4 out of every 5 flights in the test set.
+
+Good Sensitivity and Specificity: With Sensitivity at 83.41%, the model is strong at identifying flights that are not delayed, while a Specificity of 73.28% shows improved performance in detecting actual delays compared to previous models.
+
+High Precision, Moderate Recall for Delays: The Positive Predictive Value (Precision) for non-delayed flights is 93.67%, indicating that most flights predicted as on-time truly were. However, the Negative Predictive Value (for delayed flights) is 48.24%, suggesting the model still misses over half of actual delays.
+
+Balanced Performance Across Classes: The Balanced Accuracy is 78.34%, showing the model maintains reasonable performance for both delayed and non-delayed classes, especially in the presence of class imbalance.
 
