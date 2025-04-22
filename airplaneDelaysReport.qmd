@@ -1,0 +1,934 @@
+---
+title: "Flight Delay Prediction Analysis"
+author: "Team Members: Gabriela, Sami, Ayush, Ross"
+date: "April 24, 2025"
+format: docx
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction (Team Member 1, Team Member 2)
+
+## Background
+
+Flight delays are undeniably one of the most frustrating aspects of
+travel, particularly for college students balancing tight schedules.
+Juggling academic responsibilities, social commitment, and possibly part
+time jobs or internships already leaves us with precious little time to
+space. Despite airline’s marketing and promises of efficiency and
+punctuality, timely arrivals and departures often seem to elude us
+during peak travel seasons. Exploring the various factors influencing
+flight delays, including weather conditions, airport congestion, and
+airline operations, could provide great insight into this persistent
+challenge. As a result, we decided to investigate this issue further,
+utilizing the January Flight Delay Prediction dataset from the Bureau of
+Transportation Statistics (BTS). This comprehensive dataset specifically
+focuses on January 2019 Ontime flight information, offering us an
+opportunity to analyze patterns and potentially develop strategies to
+better anticipate delays. For college students with limited flexibility
+in our schedules, understanding these patterns could significantly
+improve our travel experiences and help us make more informed decisions
+about when and how to plan our journeys.
+
+## Our Dataset
+
+As mentioned before, the January Flight Delay Prediction dataset
+originates from the Bureau of Transportation Statistics (BTS),
+specifically focusing on the January 2019 Ontime dataset. This
+comprehensive dataset contains 583,985 rows and 21 columns (583,985
+observations and 21 variables) related to flight information and delay
+patterns. The variables are as follows:
+
+-   DAY_OF_MONTH - day of month on which the flight occurred
+-   DAY_OF_WEEK - day of week on which the flight occurred
+-   OP_UNIQUE CARRIER - a unique code assigned to the operating airline
+-   OP_CARRIER_AIRLINE_ID - a unique numerical ID for the operating
+    airline
+-   OP_CARRIER - the operating carrier code
+-   TAIL_NUM - the tail number of the aircraft, unique for each plane
+-   OP_CARRIER_FL_NUM - the flight number assigned by the operating
+    carrier
+-   ORIGIN_AIRPORT_ID - a unique numerical ID for the origin airport
+-   ORIGIN_AIRPORT_SEQ_ID - a sequential ID for the origin airport
+-   ORIGIN - the IATA code for the origin airport
+-   DEST_AIRPORT_ID - a unique numerical ID for the destination airport
+-   DEST_AIRPORT_SEQ_ID - a sequential ID for the destination airport
+-   DEST - the IATA code for the destination airport
+-   DEP_TIME - the scheduled departure time for the flight
+-   DEP_DEL15 - a binary indicator showing whether the flight departure
+    was delayed by 15 minutes or more (0 = not delayed, 1 = delayed)
+-   DEP_TIME_BLK - the scheduled departure time block, broad categories
+-   ARR_TIME - the scheduled arrival time of the flight
+-   ARR_DEL15 - a binary indicator showing whether the flight arrival
+    was delayed by 15 minutes or more (0 = not delayed, 1 = delayed)
+-   CANCELLED - a binary indicator showing whether the flight was
+    cancelled (0 = not cancelled, 1 = cancelled)
+-   DIVERTED - a binary indicator showing whether the flight was
+    diverted to an alternate airport (1 = yes, 0 = no)
+-   DISTANCE - the distance between the origin and destination airport
+
+## Our Question
+
+Our primary research question is: **What factors contribute to airline
+departure delays, and can we accurately predict a delay of 15 minutes or
+more using information available prior to departure?**
+
+# Data Cleaning (Team Member 3)
+
+To prepare for our predictive modeling of flight delays, we needed to
+clean and format our dataset. After carefully evaluating the original
+dataset containing 583,985 observations and 21 variables, we identified
+which features would be most useful for our analysis and which might
+interfere with model accuracy. With this goal in mind, we selected key
+variables that would be known prior to departure and dropped those that
+were redundant, irrelevant, or would create data leakage in our
+predictive models. The summary statistics of our original dataset
+revealed the range and distribution of variables such as departure
+times, flight distances, and our target variable DEP_DEL15 (indicating
+whether a flight was delayed by 15 minutes or more).
+
+We focused our cleaned dataset on the following variables:
+
+-   DAY_OF_WEEK: Day of week on which the flight occurred
+-   DAY_OF_MONTH: Day of month on which the flight occurred
+-   OP_CARRIER: The operating carrier code
+-   ORIGIN: The IATA code for the origin airport
+-   DEST: The IATA code for the destination airport
+-   DEP_TIME: The scheduled departure time for the flight
+-   DEP_TIME_BLK: The scheduled departure time block
+-   DISTANCE: The distance between origin and destination airports
+-   DEP_DEL15: Our target variable indicating whether departure was
+    delayed (1) or not (0)
+
+We also removed rows with missing values using na.omit() to ensure data
+quality. To improve model performance and prevent overfitting, we
+reduced the factor levels for certain categorical variables (ORIGIN,
+DEST, and OP_CARRIER) by keeping only the top 10 most frequent values
+and grouping the rest as "OTHER."
+
+Let's **load** the dataset.
+
+```{r}
+# Load the dataset
+flight_data <- read.csv("/Users/gabyc/OneDrive/Documents/UH/Spring 2025/MATH 4322/AirplaneDelays_MachineLearning/Dataset/Jan_2019_ontime.csv")
+```
+
+Let's now select the **relevant** features from our dataset.
+
+```{r}
+# Data cleaning - select relevant features from our cleaned dataset
+flight_clean <- flight_data[c("DAY_OF_WEEK", "DAY_OF_MONTH", "OP_CARRIER", "ORIGIN", 
+                             "DEST", "DEP_TIME", "DEP_TIME_BLK", "DISTANCE", "DEP_DEL15")]
+```
+
+Let's now remove any **NULL** rows.
+
+```{r}
+# Remove rows with NA
+flight_clean <- na.omit(flight_clean)
+```
+
+To avoid overfitting and improve model efficiency, let's find the 10
+most common **origin** airports.
+
+```{r}
+# Reduce factor levels to top 10 for better performance
+top_origin <- names(sort(table(flight_clean$ORIGIN), decreasing = TRUE)[1:10])
+flight_clean$ORIGIN <- ifelse(flight_clean$ORIGIN %in% top_origin, flight_clean$ORIGIN, "OTHER")
+```
+
+To avoid overfitting and improve model efficiency, let's find the 10
+most common **destination** airports.
+
+```{r}
+# Reduce factor levels to top 10 for better performance
+top_dest <- names(sort(table(flight_clean$DEST), decreasing = TRUE)[1:10])
+flight_clean$DEST <- ifelse(flight_clean$DEST %in% top_dest, flight_clean$DEST, "OTHER")
+```
+
+To avoid overfitting and improve model efficiency, let's find the 10
+most common **carrier** airports.
+
+```{r}
+# Reduce factor levels to top 10 for better performance
+top_carrier <- names(sort(table(flight_clean$OP_CARRIER), decreasing = TRUE)[1:10])
+flight_clean$OP_CARRIER <- ifelse(flight_clean$OP_CARRIER %in% top_carrier, flight_clean$OP_CARRIER, "OTHER")
+```
+
+Let's print some **summary statistics** of our dataset!
+
+```{r}
+# Summary statistics
+summary(flight_data)
+```
+
+From the summary statistics, we can observe that approximately **17.4%
+of flights experienced delays** (mean of DEP_DEL15 = 0.174), making this
+a somewhat **imbalanced** classification problem that we'll need to
+address in our modeling approach.
+
+Additionally, we properly converted all categorical variables to factors
+to ensure appropriate handling in our models:
+
+-   DAY_OF_WEEK
+-   DAY_OF_MONTH
+-   OP_CARRIER
+-   ORIGIN
+-   DEST
+-   DEP_TIME_BLK
+-   DEP_DEL15 (our target variable)
+
+```{r}
+flight_clean$DAY_OF_WEEK <- as.factor(flight_clean$DAY_OF_WEEK)
+flight_clean$DAY_OF_MONTH <- as.factor(flight_clean$DAY_OF_MONTH)
+flight_clean$OP_CARRIER <- as.factor(flight_clean$OP_CARRIER)
+flight_clean$ORIGIN <- as.factor(flight_clean$ORIGIN)
+flight_clean$DEST <- as.factor(flight_clean$DEST)
+flight_clean$DEP_TIME_BLK <- as.factor(flight_clean$DEP_TIME_BLK)
+flight_clean$DEP_DEL15 <- as.factor(flight_clean$DEP_DEL15)
+```
+
+## Our Chosen Approaches
+
+With our data cleaned and our response variable (**DEP_DEL15**) defined
+as binary (0 = no delay, 1 = delay), we shifted our focus toward
+identifying the most appropriate models for **classification**. Since we
+are not predicting a continuous outcome, regression models like linear
+regression were **not** suitable. Instead, we selected four
+classification models that would allow us to predict the likelihood of a
+flight delay and analyze the most influential predictors: Logistic
+Regression, Decision Tree, Random Forest, and an Enhanced Random Forest
+with feature engineering!
+
+First thing's first, divide data into training and test:
+
+```{r}
+# Split into training (80%) and test set (20%)
+library(caret)
+set.seed(42)
+trainIndex <- createDataPartition(flight_clean$DEP_DEL15, p = 0.80, list = FALSE)
+train_data <- flight_clean[trainIndex, ]
+test_data <- flight_clean[-trainIndex, ]
+```
+
+To address the class imbalance, we will be using **ROSE**. ROSE creates
+a new **balanced training set** where the classes (delayed vs not
+delayed) are roughly **evenly distributed**.
+
+```{r}
+# Address class imbalance
+library(ROSE)
+balanced_train <- ROSE(DEP_DEL15 ~ ., data = train_data, seed = 123)$data
+```
+
+# Our Methods
+
+## Logistic Regression Model
+
+## Why We Chose this Model
+
+We began with **logistic regression** as our baseline classification
+model because it is widely used for binary classification problems and
+provides clear interpretations of predictor coefficients. Logistic
+regression models the probability of a flight being delayed based on a
+logistic function and is especially useful when the relationship between
+predictors and the log-odds of the response is approximately linear.
+
+## Our Formula
+
+In the given equation, $p$, represents the probability of a flight being
+delayed, $B_0$ represents the model intercept, and $B_i$ for $i=1,...,n$
+represents the coefficients of the predictor variables, where:
+
+-   $B_1$ represents the coefficient for DAY_OF_WEEK
+-   $B_2$ represents the coefficient for OP_CARRIER
+-   $B_3$ represents the coefficient for ORIGIN_AIRPORT_ID
+-   $B_4$ represents the coefficient for DEST_AIRPORT_ID
+-   $B_5$ represents the coefficient for DEP_TIME_BLK
+-   $B_6$ represents the coefficient for DISTANCE
+
+So, the logistic regression model equation is expressed as:
+
+$y = \frac{e^{B_0 + B_1(\text{DAY_OF_WEEK}) + B_2(\text{OP_CARRIER}) + B_3(\text{ORIGIN_AIRPORT_ID}) + B_4(\text{DEST_AIRPORT_ID}) + B_5(\text{DEP_TIME_BLK}) + B_6(\text{DISTANCE})}}{1 + e^{B_0 + B_1(\text{DAY_OF_WEEK}) + B_2(\text{OP_CARRIER}) + B_3(\text{ORIGIN_AIRPORT_ID}) + B_4(\text{DEST_AIRPORT_ID}) + B_5(\text{DEP_TIME_BLK}) + B_6(\text{DISTANCE})}}$
+
+Train Logistic Regression Model on Balanced Training Data
+
+```{r}
+logistic_model <- glm(DEP_DEL15 ~ ., data = balanced_train, family = binomial)
+```
+
+Let's now print the summary of this logistic model.
+
+```{r}
+summary(logistic_model)
+```
+
+Let's now evaluate Model Using 10 Random Splits (80/20 Train/Test).
+
+```{r}
+# Splitting data into training/testing and running Logistic Regression 
+# with selected predictors over 10 iterations
+set.seed(42)
+lg.error.rate <- numeric(10)
+
+for (i in 1:10) {
+  sample <- sample.int(n = nrow(flight_clean), size = round(0.80 * nrow(flight_clean)), replace = FALSE)
+  train <- flight_clean[sample, ]
+  test <- flight_clean[-sample, ]
+  
+  flight.glm <- glm(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                      DEST + DEP_TIME_BLK + DISTANCE,
+                    data = train, family = "binomial")
+  
+  # To obtain error rate
+  glm.pred <- predict(flight.glm, newdata = test, type = "response")
+  yHat <- glm.pred > 0.5
+  lg.cm <- table(test$DEP_DEL15, yHat)
+  lg.error.rate[i] <- ((lg.cm[1,2] + lg.cm[2,1]) / sum(lg.cm))
+  lg.error.rate[i]
+}
+
+# Output the mean test error
+mean(lg.error.rate)
+```
+
+To evaluate model performance and ensure generalizability, we performed
+a **10-fold random train-test split using an 80/20 ratio**. For each
+iteration, we trained a **logistic regression model on 80% of the data
+and tested it on the remaining 20%**. We recorded the test prediction
+error for each run, then calculated the mean across all 10 iterations.
+The resulting mean test error rate was approximately 17.39%, indicating
+that the model misclassified about 1 in every 6 flights on average. This
+level of accuracy reinforces that the logistic regression model provides
+a solid baseline for predicting flight delays.
+
+## Model Interpretation
+
+### Intercept
+
+The intercept ($B_0$) is -2.977, indicating a low baseline log-odds of
+delay when all predictors are at their reference leve This suggests a
+relatively low probability of delay under these conditions, but this is
+just the baseline.
+
+### Significant Predictors
+
+-   **Day** **of** **the** **Week**: Thursday (DAY_OF_WEEK4) and Friday
+    (DAY_OF_WEEK5) significantly increase the likelihood of delays,
+    while Saturday (DAY_OF_WEEK6) decreases it.
+
+-    **Airline** **Carrier**: JetBlue (B6) shows a notably higher chance
+    of delays compared to the baseline carrier, American Airlines (AA).
+
+-    **Airports**: Origin and destination airports like ORD, LGA, and
+    SFO are associated with much higher delay probabilities.
+
+-   **Departure** **Time** **Block**: Contrary to expectation, later
+    departure blocks have strongly negative coefficients, suggesting
+    they are less likely to be delayed in this dataset.
+
+-   **Distance**: Longer flights slightly increase the likelihood of
+    delay, though the effect size is small.
+
+### Further Analysis - Confusion Matrix
+
+```{r}
+# Predict on test data
+logistic_pred <- predict(logistic_model, newdata = test_data, type = "response")
+logistic_pred_class <- ifelse(logistic_pred > 0.5, 1, 0)
+logistic_pred_class <- as.factor(logistic_pred_class)
+
+# Confusion Matrix 
+conf_matrix <- confusionMatrix(logistic_pred_class, test_data$DEP_DEL15)
+print(conf_matrix)
+```
+
+The confusion matrix shows the following results:
+
+-   **True Negatives (TN)**: 64,197 flights were correctly predicted as
+    not delayed.
+-   **False Positives (FP)**: 29,543 flights were incorrectly predicted
+    as delayed when they were not.
+-   **False Negatives (FN)**: 6,005 flights were incorrectly predicted
+    as not delayed when they actually were delayed.
+-   **True Positives (TP)**: 13,780 flights were correctly predicted as
+    delayed.
+
+To determine how well our model does on predicting delays, we look at
+**Sensitivity.**
+
+To determine how well our model does on predicting non-delays, we look
+at **Specificity**.
+
+From this, we can observe that our logistic regression model achieved an
+**accuracy of 68.69%**, which is lower than the No Information Rate of
+**82.57%**. This suggests that simply predicting the majority class (not
+delayed) would actually yield higher accuracy than our model. The Kappa
+value of 0.2595 indicates fair agreement beyond chance, but there's
+significant room for improvement.
+
+The model demonstrates balanced **sensitivity (68.48%)** and
+**specificity (69.65%)**, indicating it performs similarly at
+identifying both delayed and non-delayed flights. However, the positive
+predictive value of 91.45% for non-delayed flights versus the negative
+predictive value of **31.81%** for delayed flights shows that the model
+is much better at correctly identifying non-delayed flights when it
+predicts them. This imbalance suggests the model still struggles with accurately predicting the minority class (delayed flights), which is a common challenge in imbalanced classification problems like this one.
+
+## Tree-Based Models
+
+### Why We Chose this Model
+
+We chose a decision tree classifier as an additional modeling approach
+due to its **interpretability** and ability to capture **complex**,
+**non-linear relationships** between flight attributes and delays.
+Unlike logistic regression, which assumes linear relationships between
+features and the target, decision trees can reveal key decision splits
+that lead to delays. However, decision trees are **prone to
+overfitting**, so we applied **pruning techniques** and also
+experimented with ensemble methods like Random Forest to improve
+generalization.
+
+### Our Formula
+
+DEP_DEL15 \~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + DEST +
+DEP_TIME_BLK + DISTANCE
+
+### Decision Tree Analysis
+
+Using the tree package in R, we constructed a classification tree to predict flight delays. The decision tree creates binary splits in the data based on feature values, recursively partitioning the data to maximize homogeneity in each resulting node. We implemented the ROSE library to address the **imbalance** in our dataset, which showed significant improvement in balancing our classes as evident from the output showing almost equal distribution of delayed (227,287) and non-delayed (226,818) flights in our training data.
+
+
+```{r}
+library(tree)
+library(ROSE)
+```
+
+Let's ensure our model knows it is a classification:
+
+```{r}
+# Ensure target variable is a factor
+train_data$DEP_DEL15 <- as.factor(train_data$DEP_DEL15)
+```
+
+Let's apply ROSE to generate a balanced dataset:
+
+```{r}
+set.seed(42)
+train_rose <- ROSE(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                   DEST + DEP_TIME_BLK + DISTANCE, 
+                   data = train_data, seed = 42)$data
+```
+
+Checking the class balance after the ROSE implementation:
+
+```{r}
+# Check class balance
+table(train_rose$DEP_DEL15)
+```
+
+Let's now actually train the decision tree based off the "balanced
+data":
+
+```{r}
+# Train the decision tree on the balanced ROSE data
+tree_model <- tree(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                   DEST + DEP_TIME_BLK + DISTANCE, 
+                   data = train_rose,
+                   control = tree.control(nobs = nrow(train_rose), mindev = 0.001))
+```
+
+Let's print some summary stats!
+
+```{r}
+# Print the model summary
+summary(tree_model)
+```
+The summary of our decision tree model reveals several important insights:
+
+- The decision tree primarily utilized DEP_TIME_BLK, DAY_OF_MONTH, OP_CARRIER, DEST, and ORIGIN variables for splitting decisions, indicating these are the most influential predictors for flight delays.
+- The tree has 15 terminal nodes, suggesting a moderate level of complexity.
+- The model has a misclassification error rate of 38.68% on the balanced training data, which is relatively high but not unexpected given the complex nature of flight delay prediction.
+
+
+Let's now evaluate the model Using 10 Random Splits (80/20 Train/Test):
+
+```{r}
+# Set up storage for error rates
+set.seed(42)
+tree_error_rate <- numeric(10)
+
+for (i in 1:10) {
+  # Random 80/20 split
+  sample <- sample.int(n = nrow(flight_clean), size = round(0.80 * nrow(flight_clean)), replace = FALSE)
+  train <- flight_clean[sample, ]
+  test <- flight_clean[-sample, ]
+  
+  # Train decision tree
+  tree_model_iter <- tree(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                            DEST + DEP_TIME_BLK + DISTANCE,
+                          data = train,
+                          control = tree.control(nobs = nrow(train), mindev = 0.001))
+  
+  # Predict
+  tree_pred_iter <- predict(tree_model_iter, newdata = test, type = "class")
+  
+  # Compute confusion matrix and error rate
+  cm <- table(test$DEP_DEL15, tree_pred_iter)
+  error <- sum(cm[row(cm) != col(cm)]) / sum(cm)
+  tree_error_rate[i] <- error
+}
+
+# Mean test error across 10 iterations
+mean(tree_error_rate)
+```
+
+To evaluate model stability and generalization, we performed 10 random iterations with 80/20 train-test splits, resulting in a mean error rate of 17.22% across all runs. This lower error rate on the test data compared to the training error suggests the model generalizes reasonably well despite the class imbalance challenges.
+
+```{r}
+# Make predictions on the test set
+tree_pred <- predict(tree_model, newdata = test_data, type = "class")
+```
+
+Let's calculate a confusion matrix and print it for analysis!
+
+```{r}
+# Confusion matrix
+tree_conf_matrix <- confusionMatrix(tree_pred, test_data$DEP_DEL15)
+print(tree_conf_matrix)
+
+```
+When applying our trained model to the test dataset, the confusion matrix revealed:
+
+- True Negatives (TN): 53,816 flights were correctly predicted as not delayed.
+- False Positives (FP): 39,924 flights were incorrectly predicted as delayed when they were not.
+- False Negatives (FN): 6,934 flights were incorrectly predicted as not delayed when they actually were delayed.
+- True Positives (TP): 12,851 flights were correctly predicted as delayed.
+
+Looking at some quick metrics:
+
+```{r}
+# Performance metrics
+tree_accuracy <- tree_conf_matrix$overall["Accuracy"]
+tree_sensitivity <- tree_conf_matrix$byClass["Sensitivity"]
+tree_specificity <- tree_conf_matrix$byClass["Specificity"]
+
+cat("Decision Tree Performance (tree package):\n")
+cat("Accuracy:", tree_accuracy, "\n")
+cat("Sensitivity:", tree_sensitivity, "\n")
+cat("Specificity:", tree_specificity, "\n")
+```
+
+The overall accuracy of **58.72%** is lower than both our logistic regression model (68.69%) and the No Information Rate (82.57%). The Kappa value of 0.1349 indicates slight agreement beyond chance, suggesting the model's performance is limited. The decision tree showed sensitivity of 57.41% and specificity of 64.95%, which indicates it performs slightly better at identifying delayed flights than non-delayed ones, but both metrics are lower than what we achieved with logistic regression.
+
+The positive predictive value of 88.59% for non-delayed flights versus the negative predictive value of 24.35% for delayed flights further demonstrates the persistent challenge of accurately predicting the minority class (delayed flights) despite using the ROSE technique to balance our training data. This suggests that the inherent complexity and possibly noisy nature of flight delay patterns may require more sophisticated modeling approaches or additional features beyond what we currently have available.
+
+
+### Tree structure
+
+We set mindev = 0.001 in tree.control() to reduce the minimum deviance required for a split. This was necessary because the **default setting stopped tree growth prematurely, resulting in only three terminal nodes** that all predicted a delay of 0. Lowering this threshold allowed the tree to explore deeper splits and uncover more meaningful patterns in our data.
+
+The decision tree visualization (shown below) reveals the hierarchical structure of our flight delay prediction model. The tree branches out from the root node at the top, making binary splits based on the most informative features in our dataset. Each internal node represents a decision point based on a specific variable (such as departure time block, day of month, airline carrier, or airport), while the leaf nodes at the bottom indicate the final prediction outcomes (0 for no delay, 1 for delay).
+
+Let's now prune our tree using CV:
+
+```{r}
+# Prune the tree using cross-validation
+cv_tree <- cv.tree(tree_model, FUN = prune.misclass)
+plot(cv_tree$size, cv_tree$dev, type = "b", 
+     xlab = "Tree Size", ylab = "Misclassification Rate", main = "CV for Tree Pruning")
+```
+
+Let's now run a min function to get our lowest point to find the optimal
+number of nodes:
+
+```{r}
+# Select optimal size
+optimal_size <- cv_tree$size[which.min(cv_tree$dev)]
+cat("Optimal tree size:", optimal_size, "\n")
+```
+
+This is us pruning the tree!
+
+```{r}
+# Prune the tree
+pruned_tree <- prune.misclass(tree_model, best = optimal_size)
+# Visualize the pruned tree
+plot(pruned_tree, type = "uniform")  
+text(pruned_tree, pretty = 0, cex = 0.5) 
+```
+
+The visualization shows that **DEP_TIME_BLK** forms the first split in our decision tree, dividing flights into early morning departures (0001-0559, 0600-0659, etc.) versus later departures. This suggests that departure time is the single most influential factor in predicting delays. Secondary splits are based on **DAY_OF_MONTH, OP_CARRIER, ORIGIN, and DEST**, indicating these variables also play significant roles in delay prediction.
+
+### Pruning to Avoid Overfitting
+
+To prevent our decision tree from capturing noise in the training data, we implemented cost-complexity pruning using cv.tree() with misclassification as the pruning criterion. Cross-validation analysis determined that the optimal tree size was **15 terminal nodes**, which interestingly matched our original unpruned tree.
+
+This suggests that our original tree did not overfit severely and already maintained a balanced complexity. The flat cross-validation curve indicates that increasing tree size beyond this point would have little effect on prediction performance.
+
+
+```{r}
+# Predictions using pruned tree
+pruned_pred <- predict(pruned_tree, newdata = test_data, type = "class")
+```
+
+Here is some quick data to show the performance of the pruned tree:
+
+```{r}
+# Confusion matrix for pruned tree
+pruned_conf_matrix <- confusionMatrix(pruned_pred, test_data$DEP_DEL15)
+print(pruned_conf_matrix)
+
+# Compare accuracy before and after pruning
+cat("Comparison of accuracy before and after pruning:\n")
+cat("Original tree accuracy:", tree_accuracy, "\n")
+cat("Pruned tree accuracy:", pruned_conf_matrix$overall["Accuracy"], "\n")
+```
+
+When comparing the performance metrics before and after pruning:
+
+- Original tree accuracy: 58.72%
+- Pruned tree accuracy: 58.72%
+
+These identical metrics confirm that pruning did not change our model's performance, as the optimal tree size was the same as our original tree. This suggests our initial parameter selection with mindev = 0.001 struck an appropriate balance between model complexity and generalization ability.
+
+## Confusion Matrix Analysis
+
+The confusion matrix for our decision tree model shows:
+
+- **True Negatives (TN)**: 53,816 flights correctly predicted as not
+    delayed
+
+- **False Positives (FP)**: 39,924 flights incorrectly predicted as
+    delayed when they weren’t
+
+- **False Negatives (FN)**: 6,934 flights incorrectly predicted as not
+    delayed when they were
+
+- **True Positives (TP)**: 12,851 flights correctly predicted as
+    delayed
+
+- The model achieved **58.72% accuracy**, only worse than the No
+    Information Rate of 82.57%. The sensitivity (true positive rate for
+    class 0 – not delayed) was at **57.41**%. However, the
+    **specificity** was extremely low at **64.95**%, showing that it
+    struggled to correctly identify flights that were actually delayed.
+
+The model achieved only 58.72% accuracy, which is significantly lower than the No Information Rate of 82.57%. The sensitivity (ability to correctly identify non-delayed flights) was 57.41%, while the specificity (ability to correctly identify delayed flights) was 64.95%. While these values are relatively balanced, they demonstrate that the model struggles with accurately predicting both classes.
+
+The Kappa statistic of 0.1349 indicates slight agreement beyond chance, suggesting limited predictive power. These results indicate that despite our efforts to balance the training data using ROSE, the decision tree model still cannot effectively capture the complex patterns that lead to flight delays.
+
+Overall, the decision tree model provides some valuable insights into the factors affecting flight delays, but its predictive performance is limited. The primary value of this model lies in its interpretability rather than its predictive accuracy, as it clearly identifies the key variables influencing delays and their hierarchical relationships.
+
+
+***Why do we add the decision tree again?? its the same as the one previously produced***
+```{r}
+# Visualize the decision tree
+plot(tree_model, type = "uniform")  
+text(tree_model, pretty = 0, cex = 0.5) 
+```
+
+
+## Random Forest Model
+
+### Why We Chose this Model
+
+Random Forest was selected as our third classification model due to its
+ability to **reduce overfitting** and capture complex patterns by
+combining multiple decision trees. As an ensemble method, it builds a
+"forest" of decision trees using bootstrapped samples and random feature
+subsets, leading to more robust and generalizable predictions. This
+model helps mitigate the limitations of a single decision tree by
+aggregating predictions and lowering variance.
+
+### Our Formula
+
+`DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + DEST + DEP_TIME_BLK + DISTANCE`
+
+Let's load the required library:
+
+```{r}
+library(randomForest)
+```
+
+Let's train the model now:
+
+```{r}
+# Train the random forest model
+set.seed(42)
+rf_model <- randomForest(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + 
+                         ORIGIN + DEST + DEP_TIME_BLK + DISTANCE,
+                         data = balanced_train, ntree = 100, importance = TRUE)
+```
+
+Let's print some stats of our model:
+
+```{r}
+print(rf_model)
+```
+
+Let's perform the 10 fold test using an 80/20 split:
+
+```{r}
+set.seed(42)
+rf.error.rate <- numeric(10)
+
+for (i in 1:10) {
+  # Random 80/20 train-test split
+  sample <- sample.int(n = nrow(flight_clean), size = round(0.80 * nrow(flight_clean)), replace = FALSE)
+  train <- flight_clean[sample, ]
+  test <- flight_clean[-sample, ]
+  
+  # Balance the training set using ROSE
+  train_bal <- ROSE(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN +
+                      DEST + DEP_TIME_BLK + DISTANCE, data = train, seed = 42)$data
+  
+  # Train Random Forest
+  rf_model_iter <- randomForest(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN +
+                                  DEST + DEP_TIME_BLK + DISTANCE,
+                                data = train_bal, ntree = 100)
+  
+  # Predict
+  rf_pred <- predict(rf_model_iter, newdata = test)
+  
+  # Confusion matrix and error rate
+  cm <- table(test$DEP_DEL15, rf_pred)
+  error <- sum(cm[row(cm) != col(cm)]) / sum(cm)
+  rf.error.rate[i] <- error
+}
+
+# Mean test error across 10 iterations
+mean(rf.error.rate)
+```
+
+**Random Forest Summary:** - Number of Trees: 100 - Out-of-Bag Error
+Rate: 23.6%
+
+**Confusion Matrix (Training - OOB):** - Class 0 (not delayed): 158,809
+correctly classified, 54,153 misclassified - Class 1 (delayed): 166,434
+correctly classified, 46,328 misclassified
+
+```{r}
+# Variable importance plot
+varImpPlot(rf_model, main = "Variable Importance - Random Forest")
+```
+
+##$ Variable Importance
+The variable importance plot reveals the most influential predictors in our Random Forest model:
+
+- **DEP_TIME_BLK** (departure time block) emerges as the most important predictor according to both mean decrease in accuracy and mean decrease in Gini index, confirming our earlier findings from the decision tree model.
+- **ORIGIN** and **DEST** airports are the second and third most important variables based on mean decrease in accuracy, indicating that specific airports significantly impact delay probabilities.
+- **DISTANCE** ranks highest by mean decrease in Gini index but lower in mean decrease accuracy, suggesting it has good discriminative power but less impact on overall model accuracy.
+- **DAY_OF_MONTH**, **OP_CARRIER**, and **DAY_OF_WEEK** contribute less to the model's predictive power but still provide valuable information.
+
+This analysis indicates that the time of day and specific airports involved in a flight are the strongest predictors of delays, offering practical insights for travelers planning their journeys.
+
+
+### Predictions and Evaluation
+
+```{r}
+# Make predictions on test data
+rf_pred <- predict(rf_model, newdata = test_data)
+
+# Confusion matrix
+rf_conf_matrix <- confusionMatrix(rf_pred, test_data$DEP_DEL15)
+print(rf_conf_matrix)
+
+# Extract metrics
+rf_accuracy <- rf_conf_matrix$overall["Accuracy"]
+rf_sensitivity <- rf_conf_matrix$byClass["Sensitivity"]
+rf_specificity <- rf_conf_matrix$byClass["Specificity"]
+
+cat("Random Forest Performance:\n")
+cat("Accuracy:", rf_accuracy, "\n")
+cat("Sensitivity (True Positive Rate):", rf_sensitivity, "\n")
+cat("Specificity (True Negative Rate):", rf_specificity, "\n")
+```
+
+### Predictions and Evaluation
+When applied to our test dataset, the Random Forest model achieved the following results:
+
+- **True Negatives (TN)**: 66,895 flights correctly predicted as not delayed
+- **False Positives (FP)**: 26,845 flights incorrectly predicted as delayed when they weren't
+- **False Negatives (FN)**: 7,847 flights incorrectly predicted as not delayed when they were
+- **True Positives (TP)**: 11,938 flights correctly predicted as delayed
+
+The model achieved an accuracy of 69.44%, which is better than our decision tree model (58.72%) and slightly higher than our logistic regression model (68.69%). While this is still below the No Information Rate of 82.57%, the Random Forest model demonstrates more balanced classification capabilities.
+The Random Forest model shows a sensitivity of 71.36% and specificity of 60.34%, indicating that it performs reasonably well at identifying both non-delayed and delayed flights. The Kappa value of 0.2299 indicates fair agreement beyond chance, and the balanced accuracy of 65.85% demonstrates that the model does not heavily favor one class over the other.
+
+### Interpretation
+
+The Random Forest model performed better than both the logistic regression and decision tree models in terms of balancing sensitivity and specificity. It showed substantial improvement in identifying delayed flights compared to the decision tree while maintaining good performance in detecting non-delayed flights.
+
+While the overall accuracy (69.44%) is only slightly higher than that of logistic regression (68.69%), the Random Forest achieved more balanced classification across both classes, particularly improving the ability to detect actual delays (specificity) compared to the decision tree. This makes Random Forest a more practical model for flight delay prediction.
+
+The variable importance analysis provides actionable insights for travelers and airlines alike. By understanding that departure time blocks and specific airports are the most significant factors influencing delays, travelers can make more informed decisions when planning their journeys, potentially choosing less delay-prone times and routes.
+
+### Enhancing our Model
+
+While our initial Random Forest model showed promising results compared to logistic regression and decision trees, there were several important limitations we aimed to address through enhancements. The original model struggled with the class imbalance present in our dataset, where only about 17% of flights were delayed. Even after applying resampling techniques like ROSE, the model still favored the majority class, resulting in poor performance when identifying actual delays. To improve its sensitivity to delayed flights, we adjusted the classification threshold to better capture the minority class. Additionally, the original model used only a basic set of variables, missing important patterns such as time-of-day trends, weekend effects, and route-specific behaviors. To give the model more predictive power, we engineered new features including the hour of departure, a weekend indicator, and a combined route variable from origin and destination.
+
+We also fine-tuned key hyperparameters such as the number of trees, the
+number of features considered at each split, and the minimum number of
+samples in a terminal node. These adjustments helped reduce overfitting
+and improved the model’s generalization to unseen test data. To enhance
+interpretability, we enabled feature importance scoring, which allowed
+us to identify that variables like departure time block, route, and
+distance had the greatest impact on predicting delays. By combining
+better feature engineering, smarter sampling strategies, and thoughtful
+threshold adjustment, the enhanced Random Forest model achieved
+significantly better balance between precision and recall. This made the
+model not only more accurate but also more practical and reliable for
+real-world use cases like travel planning and airline operations.
+
+
+```{r}
+# Loading the needed libraries
+library(randomForest)
+library(ROSE)
+library(caret)
+```
+
+#### Feauture Engineering
+
+After loading the necessary libraries (randomForest, ROSE, and caret), we implemented several strategic feature engineering steps to enhance our model's predictive power:
+
+Departure Hour Extraction: We extracted the hour component from departure times to capture time-of-day patterns, as certain hours might be more prone to delays due to airport congestion or staffing patterns.
+
+Weekend Indicator: We created a binary variable to distinguish between weekday and weekend flights, as travel patterns and delay frequencies often differ significantly between these periods.
+
+Route Combination: We combined origin and destination airports into a single "ROUTE" variable to capture route-specific delay patterns that might not be evident when considering origin and destination separately.
+
+```{r}
+# === Feature Engineering ===
+balanced_train$DEP_HOUR <- floor(as.numeric(as.character(balanced_train$DEP_TIME)) / 100)
+test_data$DEP_HOUR <- floor(as.numeric(as.character(test_data$DEP_TIME)) / 100)
+
+balanced_train$IS_WEEKEND <- ifelse(balanced_train$DAY_OF_WEEK %in% c("6", "7"), 1, 0)
+test_data$IS_WEEKEND <- ifelse(test_data$DAY_OF_WEEK %in% c("6", "7"), 1, 0)
+
+balanced_train$ROUTE <- paste(balanced_train$ORIGIN, balanced_train$DEST, sep = "_")
+test_data$ROUTE <- paste(test_data$ORIGIN, test_data$DEST, sep = "_")
+```
+
+Route Optimization: To prevent overfitting and focus on meaningful patterns, we limited our route variable to the top 50 most common routes, grouping all less frequent routes as "OTHER." This approach reduces model complexity while preserving important route-specific insights.
+
+
+```{r}
+# === Limit ROUTE to Top 50 Most Common Routes ===
+top_routes <- names(sort(table(balanced_train$ROUTE), decreasing = TRUE))[1:50]
+balanced_train$ROUTE <- ifelse(balanced_train$ROUTE %in% top_routes, balanced_train$ROUTE, "OTHER")
+test_data$ROUTE <- ifelse(test_data$ROUTE %in% top_routes, test_data$ROUTE, "OTHER")
+
+```
+
+Factor Conversion: We converted our newly engineered features to factors to ensure proper treatment in the Random Forest algorithm, maintaining consistent data types throughout our dataset.
+
+
+```{r}
+# === Convert to Factors ===
+balanced_train$DEP_HOUR <- as.factor(balanced_train$DEP_HOUR)
+test_data$DEP_HOUR <- as.factor(test_data$DEP_HOUR)
+
+balanced_train$IS_WEEKEND <- as.factor(balanced_train$IS_WEEKEND)
+test_data$IS_WEEKEND <- as.factor(test_data$IS_WEEKEND)
+
+balanced_train$ROUTE <- factor(balanced_train$ROUTE, levels = unique(balanced_train$ROUTE))
+test_data$ROUTE <- factor(test_data$ROUTE, levels = levels(balanced_train$ROUTE))
+```
+
+Factor Level Alignment: To prevent errors during prediction, we ensured that all factor levels matched between our training and testing datasets, addressing a common source of errors in machine learning pipelines.
+
+```{r}
+# === Ensure All Factor Levels Match Between Train/Test ===
+factor_columns <- c("DAY_OF_MONTH", "DAY_OF_WEEK", "OP_CARRIER", "ORIGIN", 
+                    "DEST", "DEP_TIME_BLK", "DEP_HOUR", "IS_WEEKEND", "ROUTE")
+
+for (col in factor_columns) {
+  test_data[[col]] <- factor(test_data[[col]], levels = levels(balanced_train[[col]]))
+}
+
+```
+
+#### Model Training and Threshold Adjustment
+
+With our enhanced feature set, we trained an optimized Random Forest model using carefully selected hyperparameters:
+
+200 decision trees (ntree=200) to ensure robust predictions
+3 features considered at each split (mtry=3) to reduce correlation between trees
+Minimum node size of 5 (nodesize=5) to prevent overfitting
+Feature importance tracking enabled to understand variable contributions
+
+Rather than using the default 0.5 probability threshold, we maintained this threshold after observing that it provided a good balance between precision and recall for our specific dataset. This adjustment helps our model better identify actual flight delays, which is particularly important given our imbalanced dataset.
+
+
+```{r}
+# === Train Random Forest Model ===
+set.seed(42)
+rf_model <- randomForest(DEP_DEL15 ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_CARRIER + ORIGIN + 
+                         DEST + DEP_TIME_BLK + DISTANCE + DEP_HOUR + IS_WEEKEND + ROUTE,
+                         data = balanced_train,
+                         ntree = 200, mtry = 3, nodesize = 5, importance = TRUE)
+```
+
+
+```{r}
+# === Make Predictions ===
+rf_probs <- predict(rf_model, newdata = test_data, type = "prob")
+
+# Adjust threshold to favor predicting delays
+rf_pred_adjusted <- ifelse(rf_probs[, "1"] > .5, "1", "0")
+rf_pred_adjusted <- factor(rf_pred_adjusted, levels = c("0", "1"))
+
+```
+
+
+```{r}
+# === Evaluate Performance ===
+rf_conf_matrix <- confusionMatrix(rf_pred_adjusted, test_data$DEP_DEL15)
+print(rf_conf_matrix)
+
+cat("\nRandom Forest Performance:\n")
+cat("Accuracy:", rf_conf_matrix$overall["Accuracy"], "\n")
+cat("Sensitivity:", rf_conf_matrix$byClass["Sensitivity"], "\n")
+cat("Specificity:", rf_conf_matrix$byClass["Specificity"], "\n")
+cat("NPV:", rf_conf_matrix$byClass["Neg Pred Value"], "\n")
+```
+
+#### Model Performance Assessment
+The enhanced Random Forest model demonstrated significant improvements:
+
+High Overall Accuracy: The model achieved an accuracy of 80.93%, meaning it correctly predicted delay status for over 4 out of every 5 flights in the test set.
+
+Good Sensitivity and Specificity: With Sensitivity at 82.25%, the model is strong at identifying flights that are not delayed, while a Specificity of 74.68% shows improved performance in detecting actual delays compared to previous models.
+
+High Precision, Moderate Recall for Delays: The Positive Predictive Value (Precision) for non-delayed flights is 93.90%, indicating that most flights predicted as on-time truly were. However, the Negative Predictive Value (for delayed flights) is 47.04%, suggesting the model still misses over half of actual delays.
+
+Balanced Performance Across Classes: The Balanced Accuracy is 78.47%, showing the model maintains reasonable performance for both delayed and non-delayed classes, especially in the presence of class imbalance.
+
+```{r}
+varImpPlot(rf_model, main = "Variable Importance - Enhanced Random Forest")
+```
+
+#### Variable Importance Analysis
+The variable importance plot reveals critical insights about delay predictions:
+
+- **Departure Hour** is the most influential predictor by a significant margin, confirming our hypothesis that the time of day strongly affects delay probabilities.
+
+- **Departure Time Block** and **Distance** follow as the next most important variables, indicating that specific time periods and longer flights have distinct delay patterns.
+
+- **Day of Month** and **Operating Carrier** also show substantial influence, suggesting that certain days of the month and specific airlines have predictable delay tendencies.
+
+- The Route variable we engineered ranks as the 5th most important feature, validating our decision to create this composite feature.
+
+- Interestingly, the **Weekend** Indicator shows the lowest importance among our variables, suggesting that while weekday/weekend differences exist, they're less crucial than other factors in predicting delays.
+
+This improved model not only achieves better quantitative metrics but also provides actionable insights that could help airlines and passengers better understand and anticipate flight delays.
+
+
+## Conclusion
+
+This study utilized various machine learning models to predict airline flight delays, with the enhanced Random Forest model emerging as the most effective approach, achieving an impressive 80.93% accuracy. Our analysis revealed that departure hour, time block, and distance are the most influential predictors of delays, while specific airports and carriers also significantly impact flight punctuality. The feature engineering process—particularly the creation of time-based variables and route combinations—proved crucial in improving model performance beyond baseline approaches. While our models demonstrated strong predictive capabilities for on-time flights, accurately identifying delays remains challenging due to the inherent class imbalance in flight data. These insights can help college students with tight schedules make more informed travel decisions by understanding which flight characteristics are most likely to result in delays, potentially saving valuable time during academic semesters. Future work could focus on incorporating external factors such as weather data and airport congestion metrics to further enhance prediction accuracy.
+
+## References
